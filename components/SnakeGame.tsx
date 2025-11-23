@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { Tables } from '../supabase/types';
 import { GameState, GameStatus, Direction, Point } from '../types';
 import { BOARD_SIZE, INITIAL_SNAKE, INITIAL_DIRECTION, INITIAL_SPEED, KEY_MAP, MIN_SPEED, SPEED_DECREMENT } from '../constants';
 import { Trophy, RefreshCcw, Play, Pause, XCircle } from 'lucide-react';
 import { MobileControls } from './MobileControls';
+import { getGlobalLeaderboard, submitScore, getCurrentUser, type GameMode } from '../services/api';
+import type { Tables } from '../supabase/types';
+import { supabase } from '../supabase/client';
 
 // Helper to generate random food not on snake
 const generateFood = (snake: Point[]): Point => {
@@ -42,10 +44,9 @@ export const SnakeGame: React.FC = () => {
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [speed, setSpeed] = useState(INITIAL_SPEED);
-
-  const [globalHigh, setGlobalHigh] = useState<number | null>(null);
+  const [user, setUser] = useState<any>(null);
   const [leaderboard, setLeaderboard] = useState<Tables<'leaderboard_global'>[]>([]);
-  const [leaderboardState, setLeaderboardState] = useState<'idle' | 'loading' | 'error' | 'disabled'>('idle');
+  const startTimeRef = useRef<number | null>(null);
 
   const RAINBOW_PALETTE = [
     'red',
@@ -94,27 +95,7 @@ export const SnakeGame: React.FC = () => {
     const saved = localStorage.getItem('snake-highscore');
     if (saved) setHighScore(parseInt(saved, 10));
     setFood(generateFood(INITIAL_SNAKE));
-  }, []);
-
-  useEffect(() => {
-    const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-    const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-    if (!url || !key) {
-      setLeaderboardState('disabled');
-      return;
-    }
-    (async () => {
-      setLeaderboardState('loading');
-      try {
-        const api = await import('../services/api');
-        const data = await api.getGlobalLeaderboard({ limit: 5 });
-        setLeaderboard(data ?? []);
-        setGlobalHigh(data?.[0]?.best_score ?? null);
-        setLeaderboardState('idle');
-      } catch (e) {
-        setLeaderboardState('error');
-      }
-    })();
+    getCurrentUser().then(setUser).catch(() => setUser(null));
   }, []);
 
   // Save High Score
@@ -124,6 +105,15 @@ export const SnakeGame: React.FC = () => {
       localStorage.setItem('snake-highscore', score.toString());
     }
   }, [score, highScore]);
+
+  const fetchLeaderboard = useCallback(async () => {
+    const data = await getGlobalLeaderboard({ limit: 10, offset: 0 });
+    setLeaderboard(data ?? []);
+  }, []);
+
+  useEffect(() => {
+    fetchLeaderboard();
+  }, [fetchLeaderboard]);
 
   // --- Game Loop ---
   const gameTick = useCallback(() => {
@@ -207,23 +197,6 @@ export const SnakeGame: React.FC = () => {
   }, [food]);
 
   useEffect(() => {
-    if (status !== GameStatus.GAME_OVER) return;
-    const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-    const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-    if (!url || !key) return;
-    (async () => {
-      try {
-        const api = await import('../services/api');
-        await api.submitScore(score, { mode: 'classic', grid_size: BOARD_SIZE });
-        const refreshed = await api.getGlobalLeaderboard({ limit: 5 });
-        setLeaderboard(refreshed ?? []);
-        setGlobalHigh(refreshed?.[0]?.best_score ?? null);
-      } catch (e) {
-      }
-    })();
-  }, [status]);
-
-  useEffect(() => {
     if (status !== GameStatus.PLAYING) return;
 
     const intervalId = setInterval(gameTick, speed);
@@ -275,12 +248,25 @@ export const SnakeGame: React.FC = () => {
     setFood(generateFood(INITIAL_SNAKE));
     setSegmentColors(initialSegmentColors);
     lastEatColorRef.current = COLOR_CLASS[RAINBOW_PALETTE[0]];
+    startTimeRef.current = Date.now();
   };
 
   const togglePause = () => {
     if (status === GameStatus.PLAYING) setStatus(GameStatus.PAUSED);
     else if (status === GameStatus.PAUSED) setStatus(GameStatus.PLAYING);
   };
+
+  useEffect(() => {
+    if (status !== GameStatus.GAME_OVER) return;
+    const duration = startTimeRef.current ? Math.round((Date.now() - startTimeRef.current) / 1000) : null;
+    if (user) {
+      submitScore(score, { mode: 'classic' as GameMode, duration_seconds: duration ?? undefined, grid_size: BOARD_SIZE })
+        .then(() => fetchLeaderboard())
+        .catch(() => {});
+    } else {
+      fetchLeaderboard();
+    }
+  }, [status, user, score, fetchLeaderboard]);
 
   // --- Render Helpers ---
   // Memoize grid cells to prevent regeneration on every render
@@ -303,7 +289,7 @@ export const SnakeGame: React.FC = () => {
            </div>
            <div className="flex flex-col">
              <span className="text-xs text-gray-400 uppercase font-bold tracking-wider">High Score</span>
-            <span className="text-xl font-mono font-bold text-yellow-400">{globalHigh ?? highScore}</span>
+             <span className="text-xl font-mono font-bold text-yellow-400">{highScore}</span>
            </div>
         </div>
         
@@ -311,6 +297,41 @@ export const SnakeGame: React.FC = () => {
           <span className="text-xs text-gray-400 uppercase font-bold tracking-wider">Current</span>
           <span className="text-2xl font-mono font-bold text-white">{score}</span>
         </div>
+        <div className="flex items-center gap-2">
+          {!user ? (
+            <button
+              onClick={() => supabase.auth.signInWithOAuth({ provider: 'github' })}
+              className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-white text-xs rounded border border-gray-700"
+            >
+              Sign in
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">{user.email ?? 'Signed in'}</span>
+              <button
+                onClick={async () => { await supabase.auth.signOut(); setUser(null); }}
+                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-white text-xs rounded border border-gray-700"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="w-full mb-4 bg-game-board p-3 rounded-xl border border-game-grid shadow-lg">
+        <div className="flex justify-between items-center">
+          <span className="text-xs text-gray-400 uppercase font-bold tracking-wider">Global Top</span>
+          <span className="text-xs text-gray-500">Top 10</span>
+        </div>
+        <ul className="mt-2 space-y-1">
+          {leaderboard.map((row, idx) => (
+            <li key={`${row.user_id}-${idx}`} className="flex justify-between text-sm text-gray-300">
+              <span>{row.username ?? (row.user_id ? row.user_id.slice(0, 6) : '-')}</span>
+              <span className="font-mono">{row.best_score ?? 0}</span>
+            </li>
+          ))}
+        </ul>
       </div>
 
       {/* Game Board Container */}
@@ -414,33 +435,8 @@ export const SnakeGame: React.FC = () => {
                 {status === GameStatus.PAUSED ? <Play className="w-6 h-6" /> : <Pause className="w-6 h-6" />}
               </button>
             )}
-        </div>
+         </div>
       </div>
-
-      {leaderboardState !== 'disabled' && (
-        <div className="mt-4 w-full bg-game-board p-3 rounded-xl border border-game-grid shadow-lg">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-400 uppercase font-bold tracking-wider">Leaderboard</span>
-            {leaderboardState === 'loading' && (
-              <span className="text-xs text-gray-500">Loading...</span>
-            )}
-            {leaderboardState === 'error' && (
-              <span className="text-xs text-red-500">Unavailable</span>
-            )}
-          </div>
-          <div className="space-y-1">
-            {leaderboard.map((row, i) => (
-              <div key={`${row.user_id}-${i}`} className="flex items-center justify-between text-sm">
-                <span className="text-gray-300">{row.username ?? 'Anonymous'}</span>
-                <span className="font-mono text-white">{row.best_score ?? 0}</span>
-              </div>
-            ))}
-            {leaderboard.length === 0 && leaderboardState === 'idle' && (
-              <div className="text-sm text-gray-500">No data</div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
