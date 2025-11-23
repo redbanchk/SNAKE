@@ -41,6 +41,7 @@ export const SnakeGame: React.FC = () => {
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [speed, setSpeed] = useState(INITIAL_SPEED);
+  const [snakeColors, setSnakeColors] = useState<string[]>(['green', 'green']);
 
   // Use refs for mutable values needed inside the effect interval to avoid closure staleness
   // or excessive re-renders/dependency loops.
@@ -53,6 +54,15 @@ export const SnakeGame: React.FC = () => {
     if (saved) setHighScore(parseInt(saved, 10));
     setFood(generateFood(INITIAL_SNAKE));
   }, []);
+
+  // Rainbow colors array
+  const rainbowColors = ['red', 'orange', 'yellow', 'green', 'blue', 'indigo', 'purple', 'pink', 'cyan', 'lime'];
+
+  // Get next rainbow color
+  const getNextRainbowColor = (currentColor: string): string => {
+    const currentIndex = rainbowColors.indexOf(currentColor);
+    return rainbowColors[(currentIndex + 1) % rainbowColors.length];
+  };
 
   // Save High Score
   useEffect(() => {
@@ -110,6 +120,13 @@ export const SnakeGame: React.FC = () => {
         setScore((s) => s + 1);
         setSpeed((s) => Math.max(MIN_SPEED, s - SPEED_DECREMENT));
         
+        // Add new color for the growing segment
+        setSnakeColors((prevColors) => {
+          const lastColor = prevColors[prevColors.length - 1];
+          const newColor = getNextRainbowColor(lastColor);
+          return [...prevColors, newColor];
+        });
+        
         const nextFood = generateFood(newSnake);
         // If board is full or we can't place food, trigger win/game over state logic
         if (nextFood.x === -1) {
@@ -121,6 +138,8 @@ export const SnakeGame: React.FC = () => {
         // Don't pop tail (grow)
       } else {
         newSnake.pop(); // Remove tail (move)
+        // Also remove the last color when snake moves without growing
+        setSnakeColors((prevColors) => prevColors.slice(0, -1));
       }
 
       return newSnake;
@@ -177,6 +196,8 @@ export const SnakeGame: React.FC = () => {
     setSpeed(INITIAL_SPEED);
     setStatus(GameStatus.PLAYING);
     setFood(generateFood(INITIAL_SNAKE));
+    // Initialize rainbow colors for starting snake
+    setSnakeColors(['red', 'orange']);
   };
 
   const togglePause = () => {
@@ -227,15 +248,30 @@ export const SnakeGame: React.FC = () => {
         >
           {gridCells.map((cell) => {
             const isSnakeHead = snake[0].x === cell.x && snake[0].y === cell.y;
-            const isSnakeBody = !isSnakeHead && snake.some((s) => s.x === cell.x && s.y === cell.y);
+            const snakeBodyIndex = snake.findIndex((s) => s.x === cell.x && s.y === cell.y);
+            const isSnakeBody = !isSnakeHead && snakeBodyIndex !== -1;
             const isFood = food.x === cell.x && food.y === cell.y;
 
             let cellClass = "w-full h-full border-[0.5px] border-game-grid/30 "; // faint grid lines
             
             if (isSnakeHead) {
-               cellClass += "bg-game-snakeHead rounded-sm z-10 scale-105 shadow-md shadow-green-900/50";
+               cellClass += "bg-red-500 rounded-sm z-10 scale-105 shadow-md shadow-red-900/50";
             } else if (isSnakeBody) {
-               cellClass += "bg-game-snake rounded-sm opacity-90";
+               const colorIndex = snakeBodyIndex;
+               const color = snakeColors[colorIndex] || 'green';
+               const colorMap: { [key: string]: string } = {
+                 red: 'bg-red-400',
+                 orange: 'bg-orange-400', 
+                 yellow: 'bg-yellow-400',
+                 green: 'bg-green-400',
+                 blue: 'bg-blue-400',
+                 indigo: 'bg-indigo-400',
+                 purple: 'bg-purple-400',
+                 pink: 'bg-pink-400',
+                 cyan: 'bg-cyan-400',
+                 lime: 'bg-lime-400'
+               };
+               cellClass += `${colorMap[color] || 'bg-green-400'} rounded-sm opacity-90`;
             } else if (isFood) {
                cellClass += "bg-game-food rounded-full animate-pulse shadow-md shadow-red-900/50 scale-75";
             } 
