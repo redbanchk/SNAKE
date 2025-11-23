@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { GameState, GameStatus, Direction, Point } from '../types';
 import { BOARD_SIZE, INITIAL_SNAKE, INITIAL_DIRECTION, INITIAL_SPEED, KEY_MAP, MIN_SPEED, SPEED_DECREMENT } from '../constants';
 import { Trophy, RefreshCcw, Play, Pause, XCircle } from 'lucide-react';
@@ -6,9 +6,18 @@ import { MobileControls } from './MobileControls';
 
 // Helper to generate random food not on snake
 const generateFood = (snake: Point[]): Point => {
+  // Safety guard: If snake fills the board, return off-board coordinate to prevent infinite loop
+  if (snake.length >= BOARD_SIZE * BOARD_SIZE) {
+    return { x: -1, y: -1 };
+  }
+
   let newFood: Point;
   let isOnSnake = true;
-  while (isOnSnake) {
+  // Safety counter to prevent theoretical infinite loops
+  let attempts = 0;
+  const maxAttempts = BOARD_SIZE * BOARD_SIZE * 2;
+
+  while (isOnSnake && attempts < maxAttempts) {
     newFood = {
       x: Math.floor(Math.random() * BOARD_SIZE),
       y: Math.floor(Math.random() * BOARD_SIZE),
@@ -16,8 +25,11 @@ const generateFood = (snake: Point[]): Point => {
     // eslint-disable-next-line no-loop-func
     isOnSnake = snake.some((segment) => segment.x === newFood.x && segment.y === newFood.y);
     if (!isOnSnake) return newFood;
+    attempts++;
   }
-  return { x: 0, y: 0 }; // Fallback (should theoretically never reach here if loop works)
+  
+  // If we couldn't find a spot (very rare unless board is almost full), return a safe fallback or error
+  return { x: -1, y: -1 }; 
 };
 
 export const SnakeGame: React.FC = () => {
@@ -97,10 +109,15 @@ export const SnakeGame: React.FC = () => {
       if (newHead.x === food.x && newHead.y === food.y) {
         setScore((s) => s + 1);
         setSpeed((s) => Math.max(MIN_SPEED, s - SPEED_DECREMENT));
-        // We rely on the *updated* snake state for the next food generation in the next render cycle?
-        // Actually, better to calculate food here or use a layout effect.
-        // For simplicity in React state, we'll set food immediately using the *newSnake* (including the tail).
-        setFood(generateFood(newSnake));
+        
+        const nextFood = generateFood(newSnake);
+        // If board is full or we can't place food, trigger win/game over state logic
+        if (nextFood.x === -1) {
+             // For now, we just don't place food. 
+             // The snake will continue moving until it hits something or we add a WIN state.
+             // Simplest approach: continue, but no more food appears.
+        }
+        setFood(nextFood);
         // Don't pop tail (grow)
       } else {
         newSnake.pop(); // Remove tail (move)
@@ -168,12 +185,14 @@ export const SnakeGame: React.FC = () => {
   };
 
   // --- Render Helpers ---
-  // Create a flat array for the grid cells
-  const gridCells = Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, i) => {
-    const x = i % BOARD_SIZE;
-    const y = Math.floor(i / BOARD_SIZE);
-    return { x, y, id: i };
-  });
+  // Memoize grid cells to prevent regeneration on every render
+  const gridCells = useMemo(() => {
+    return Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, i) => {
+      const x = i % BOARD_SIZE;
+      const y = Math.floor(i / BOARD_SIZE);
+      return { x, y, id: i };
+    });
+  }, []);
 
   return (
     <div className="flex flex-col items-center justify-center w-full max-w-lg mx-auto p-4 h-full">
