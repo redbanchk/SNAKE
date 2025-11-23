@@ -67,7 +67,6 @@ export const SnakeGame: React.FC = () => {
     }
   }, [score, highScore]);
 
-  // Color classes mapping for Tailwind
   const colorClasses = useMemo(() => {
     return {
       green: { body: 'bg-green-400', head: 'bg-green-500', headShadow: 'shadow-green-500/30' },
