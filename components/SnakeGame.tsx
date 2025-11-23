@@ -41,6 +41,7 @@ export const SnakeGame: React.FC = () => {
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [speed, setSpeed] = useState(INITIAL_SPEED);
+  const [snakeColor, setSnakeColor] = useState<'green' | 'sky' | 'violet' | 'yellow' | 'pink' | 'orange'>('green');
 
   // Use refs for mutable values needed inside the effect interval to avoid closure staleness
   // or excessive re-renders/dependency loops.
@@ -52,6 +53,10 @@ export const SnakeGame: React.FC = () => {
     const saved = localStorage.getItem('snake-highscore');
     if (saved) setHighScore(parseInt(saved, 10));
     setFood(generateFood(INITIAL_SNAKE));
+    const savedColor = localStorage.getItem('snake-color');
+    if (savedColor && ['green','sky','violet','yellow','pink','orange'].includes(savedColor)) {
+      setSnakeColor(savedColor as typeof snakeColor);
+    }
   }, []);
 
   // Save High Score
@@ -61,6 +66,20 @@ export const SnakeGame: React.FC = () => {
       localStorage.setItem('snake-highscore', score.toString());
     }
   }, [score, highScore]);
+
+  // Color classes mapping for Tailwind
+  const colorClasses = useMemo(() => {
+    return {
+      green: { body: 'bg-green-400', head: 'bg-green-500', headShadow: 'shadow-green-500/30' },
+      sky: { body: 'bg-sky-400', head: 'bg-sky-500', headShadow: 'shadow-sky-500/30' },
+      violet: { body: 'bg-violet-400', head: 'bg-violet-500', headShadow: 'shadow-violet-500/30' },
+      yellow: { body: 'bg-yellow-400', head: 'bg-yellow-500', headShadow: 'shadow-yellow-500/30' },
+      pink: { body: 'bg-pink-400', head: 'bg-pink-500', headShadow: 'shadow-pink-500/30' },
+      orange: { body: 'bg-orange-400', head: 'bg-orange-500', headShadow: 'shadow-orange-500/30' },
+    } as const;
+  }, []);
+
+  const selectedColor = colorClasses[snakeColor];
 
   // --- Game Loop ---
   const gameTick = useCallback(() => {
@@ -233,9 +252,9 @@ export const SnakeGame: React.FC = () => {
             let cellClass = "w-full h-full border-[0.5px] border-game-grid/30 "; // faint grid lines
             
             if (isSnakeHead) {
-               cellClass += "bg-game-snakeHead rounded-sm z-10 scale-105 shadow-md shadow-green-900/50";
+               cellClass += `${selectedColor.head} rounded-sm z-10 scale-105 shadow-md ${selectedColor.headShadow}`;
             } else if (isSnakeBody) {
-               cellClass += "bg-game-snake rounded-sm opacity-90";
+               cellClass += `${selectedColor.body} rounded-sm opacity-90`;
             } else if (isFood) {
                cellClass += "bg-game-food rounded-full animate-pulse shadow-md shadow-red-900/50 scale-75";
             } 
@@ -248,6 +267,22 @@ export const SnakeGame: React.FC = () => {
         {status === GameStatus.IDLE && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm rounded-lg z-20">
             <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500 mb-6 drop-shadow-lg tracking-tighter">SNAKE</h1>
+            <div className="mb-6 flex items-center gap-3" role="group" aria-label="选择蛇的颜色">
+              {(['green','sky','violet','yellow','pink','orange'] as const).map((c) => {
+                const opt = colorClasses[c];
+                const isSelected = snakeColor === c;
+                return (
+                  <button
+                    key={c}
+                    onClick={() => { setSnakeColor(c); localStorage.setItem('snake-color', c); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setSnakeColor(c); localStorage.setItem('snake-color', c); } }}
+                    aria-label={`选择 ${c} 颜色`}
+                    tabIndex={0}
+                    className={`w-8 h-8 rounded-full border-2 ${opt.head} ${isSelected ? 'ring-2 ring-white' : 'ring-0'} focus:outline-none focus:ring-2 focus:ring-white`}
+                  />
+                );
+              })}
+            </div>
             <button
               onClick={startGame}
               className="flex items-center gap-2 px-8 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-full transition-all hover:scale-105 active:scale-95 shadow-lg shadow-green-500/30"
