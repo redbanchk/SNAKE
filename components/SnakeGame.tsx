@@ -41,7 +41,43 @@ export const SnakeGame: React.FC = () => {
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [speed, setSpeed] = useState(INITIAL_SPEED);
-  const [snakeColors, setSnakeColors] = useState<string[]>(['green', 'green']);
+
+  const RAINBOW_PALETTE = [
+    'red',
+    'orange',
+    'yellow',
+    'green',
+    'sky',
+    'blue',
+    'indigo',
+    'violet',
+    'pink',
+  ] as const;
+
+  const COLOR_CLASS: Record<(typeof RAINBOW_PALETTE)[number], string> = {
+    red: 'bg-red-500',
+    orange: 'bg-orange-500',
+    yellow: 'bg-yellow-500',
+    green: 'bg-green-500',
+    sky: 'bg-sky-500',
+    blue: 'bg-blue-500',
+    indigo: 'bg-indigo-500',
+    violet: 'bg-violet-500',
+    pink: 'bg-pink-500',
+  };
+
+  const initialSegmentColors = useMemo(
+    () => INITIAL_SNAKE.map((_, i) => COLOR_CLASS[RAINBOW_PALETTE[i % RAINBOW_PALETTE.length]]),
+    []
+  );
+  const [segmentColors, setSegmentColors] = useState<string[]>(initialSegmentColors);
+  const lastEatColorRef = useRef<string>(COLOR_CLASS[RAINBOW_PALETTE[0]]);
+
+  const pickNextColor = useCallback((prev: string) => {
+    const idx = RAINBOW_PALETTE.findIndex((c) => COLOR_CLASS[c] === prev);
+    const nextIdx = (idx + 1 + RAINBOW_PALETTE.length) % RAINBOW_PALETTE.length;
+    return COLOR_CLASS[RAINBOW_PALETTE[nextIdx]];
+  }, []);
 
   // Use refs for mutable values needed inside the effect interval to avoid closure staleness
   // or excessive re-renders/dependency loops.
@@ -54,15 +90,6 @@ export const SnakeGame: React.FC = () => {
     if (saved) setHighScore(parseInt(saved, 10));
     setFood(generateFood(INITIAL_SNAKE));
   }, []);
-
-  // Rainbow colors array
-  const rainbowColors = ['red', 'orange', 'yellow', 'green', 'blue', 'indigo', 'purple', 'pink', 'cyan', 'lime'];
-
-  // Get next rainbow color
-  const getNextRainbowColor = (currentColor: string): string => {
-    const currentIndex = rainbowColors.indexOf(currentColor);
-    return rainbowColors[(currentIndex + 1) % rainbowColors.length];
-  };
 
   // Save High Score
   useEffect(() => {
@@ -116,16 +143,10 @@ export const SnakeGame: React.FC = () => {
       const newSnake = [newHead, ...prevSnake];
 
       // Check Food
-      if (newHead.x === food.x && newHead.y === food.y) {
+      const ate = newHead.x === food.x && newHead.y === food.y;
+      if (ate) {
         setScore((s) => s + 1);
         setSpeed((s) => Math.max(MIN_SPEED, s - SPEED_DECREMENT));
-        
-        // Add new color for the growing segment
-        setSnakeColors((prevColors) => {
-          const lastColor = prevColors[prevColors.length - 1];
-          const newColor = getNextRainbowColor(lastColor);
-          return [...prevColors, newColor];
-        });
         
         const nextFood = generateFood(newSnake);
         // If board is full or we can't place food, trigger win/game over state logic
@@ -138,9 +159,22 @@ export const SnakeGame: React.FC = () => {
         // Don't pop tail (grow)
       } else {
         newSnake.pop(); // Remove tail (move)
-        // Also remove the last color when snake moves without growing
-        setSnakeColors((prevColors) => prevColors.slice(0, -1));
       }
+
+      setSegmentColors((prevColors) => {
+        const headPrev = prevColors[0] ?? COLOR_CLASS[RAINBOW_PALETTE[0]];
+        if (ate) {
+          let candidate = pickNextColor(lastEatColorRef.current);
+          if (candidate === headPrev) {
+            candidate = pickNextColor(candidate);
+          }
+          lastEatColorRef.current = candidate;
+          return [candidate, ...prevColors];
+        }
+        const shifted = [headPrev, ...prevColors];
+        shifted.pop();
+        return shifted;
+      });
 
       return newSnake;
     });
@@ -196,8 +230,8 @@ export const SnakeGame: React.FC = () => {
     setSpeed(INITIAL_SPEED);
     setStatus(GameStatus.PLAYING);
     setFood(generateFood(INITIAL_SNAKE));
-    // Initialize rainbow colors for starting snake
-    setSnakeColors(['red', 'orange']);
+    setSegmentColors(initialSegmentColors);
+    lastEatColorRef.current = COLOR_CLASS[RAINBOW_PALETTE[0]];
   };
 
   const togglePause = () => {
@@ -247,34 +281,22 @@ export const SnakeGame: React.FC = () => {
           }}
         >
           {gridCells.map((cell) => {
-            const isSnakeHead = snake[0].x === cell.x && snake[0].y === cell.y;
-            const snakeBodyIndex = snake.findIndex((s) => s.x === cell.x && s.y === cell.y);
-            const isSnakeBody = !isSnakeHead && snakeBodyIndex !== -1;
+            const segIdx = snake.findIndex((s) => s.x === cell.x && s.y === cell.y);
+            const isSnakeSegment = segIdx >= 0;
+            const isSnakeHead = segIdx === 0;
             const isFood = food.x === cell.x && food.y === cell.y;
 
-            let cellClass = "w-full h-full border-[0.5px] border-game-grid/30 "; // faint grid lines
-            
-            if (isSnakeHead) {
-               cellClass += "bg-red-500 rounded-sm z-10 scale-105 shadow-md shadow-red-900/50";
-            } else if (isSnakeBody) {
-               const colorIndex = snakeBodyIndex;
-               const color = snakeColors[colorIndex] || 'green';
-               const colorMap: { [key: string]: string } = {
-                 red: 'bg-red-400',
-                 orange: 'bg-orange-400', 
-                 yellow: 'bg-yellow-400',
-                 green: 'bg-green-400',
-                 blue: 'bg-blue-400',
-                 indigo: 'bg-indigo-400',
-                 purple: 'bg-purple-400',
-                 pink: 'bg-pink-400',
-                 cyan: 'bg-cyan-400',
-                 lime: 'bg-lime-400'
-               };
-               cellClass += `${colorMap[color] || 'bg-green-400'} rounded-sm opacity-90`;
+            let cellClass = "w-full h-full border-[0.5px] border-game-grid/30 ";
+            if (isSnakeSegment) {
+              const colorClass = segmentColors[segIdx] ?? COLOR_CLASS[RAINBOW_PALETTE[segIdx % RAINBOW_PALETTE.length]];
+              if (isSnakeHead) {
+                cellClass += `${colorClass} rounded-sm z-10 scale-105 shadow-md shadow-black/40`;
+              } else {
+                cellClass += `${colorClass} rounded-sm opacity-90`;
+              }
             } else if (isFood) {
-               cellClass += "bg-game-food rounded-full animate-pulse shadow-md shadow-red-900/50 scale-75";
-            } 
+              cellClass += "bg-game-food rounded-full animate-pulse shadow-md shadow-red-900/50 scale-75";
+            }
 
             return <div key={cell.id} className={cellClass} />;
           })}
