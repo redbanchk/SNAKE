@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import type { Tables } from '../supabase/types';
 import { GameState, GameStatus, Direction, Point } from '../types';
 import { BOARD_SIZE, INITIAL_SNAKE, INITIAL_DIRECTION, INITIAL_SPEED, KEY_MAP, MIN_SPEED, SPEED_DECREMENT } from '../constants';
 import { Trophy, RefreshCcw, Play, Pause, XCircle } from 'lucide-react';
@@ -41,6 +42,10 @@ export const SnakeGame: React.FC = () => {
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [speed, setSpeed] = useState(INITIAL_SPEED);
+
+  const [globalHigh, setGlobalHigh] = useState<number | null>(null);
+  const [leaderboard, setLeaderboard] = useState<Tables<'leaderboard_global'>[]>([]);
+  const [leaderboardState, setLeaderboardState] = useState<'idle' | 'loading' | 'error' | 'disabled'>('idle');
 
   const RAINBOW_PALETTE = [
     'red',
@@ -89,6 +94,27 @@ export const SnakeGame: React.FC = () => {
     const saved = localStorage.getItem('snake-highscore');
     if (saved) setHighScore(parseInt(saved, 10));
     setFood(generateFood(INITIAL_SNAKE));
+  }, []);
+
+  useEffect(() => {
+    const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+    const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+    if (!url || !key) {
+      setLeaderboardState('disabled');
+      return;
+    }
+    (async () => {
+      setLeaderboardState('loading');
+      try {
+        const api = await import('../services/api');
+        const data = await api.getGlobalLeaderboard({ limit: 5 });
+        setLeaderboard(data ?? []);
+        setGlobalHigh(data?.[0]?.best_score ?? null);
+        setLeaderboardState('idle');
+      } catch (e) {
+        setLeaderboardState('error');
+      }
+    })();
   }, []);
 
   // Save High Score
@@ -181,6 +207,23 @@ export const SnakeGame: React.FC = () => {
   }, [food]);
 
   useEffect(() => {
+    if (status !== GameStatus.GAME_OVER) return;
+    const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+    const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+    if (!url || !key) return;
+    (async () => {
+      try {
+        const api = await import('../services/api');
+        await api.submitScore(score, { mode: 'classic', grid_size: BOARD_SIZE });
+        const refreshed = await api.getGlobalLeaderboard({ limit: 5 });
+        setLeaderboard(refreshed ?? []);
+        setGlobalHigh(refreshed?.[0]?.best_score ?? null);
+      } catch (e) {
+      }
+    })();
+  }, [status]);
+
+  useEffect(() => {
     if (status !== GameStatus.PLAYING) return;
 
     const intervalId = setInterval(gameTick, speed);
@@ -260,7 +303,7 @@ export const SnakeGame: React.FC = () => {
            </div>
            <div className="flex flex-col">
              <span className="text-xs text-gray-400 uppercase font-bold tracking-wider">High Score</span>
-             <span className="text-xl font-mono font-bold text-yellow-400">{highScore}</span>
+            <span className="text-xl font-mono font-bold text-yellow-400">{globalHigh ?? highScore}</span>
            </div>
         </div>
         
@@ -371,8 +414,33 @@ export const SnakeGame: React.FC = () => {
                 {status === GameStatus.PAUSED ? <Play className="w-6 h-6" /> : <Pause className="w-6 h-6" />}
               </button>
             )}
-         </div>
+        </div>
       </div>
+
+      {leaderboardState !== 'disabled' && (
+        <div className="mt-4 w-full bg-game-board p-3 rounded-xl border border-game-grid shadow-lg">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-400 uppercase font-bold tracking-wider">Leaderboard</span>
+            {leaderboardState === 'loading' && (
+              <span className="text-xs text-gray-500">Loading...</span>
+            )}
+            {leaderboardState === 'error' && (
+              <span className="text-xs text-red-500">Unavailable</span>
+            )}
+          </div>
+          <div className="space-y-1">
+            {leaderboard.map((row, i) => (
+              <div key={`${row.user_id}-${i}`} className="flex items-center justify-between text-sm">
+                <span className="text-gray-300">{row.username ?? 'Anonymous'}</span>
+                <span className="font-mono text-white">{row.best_score ?? 0}</span>
+              </div>
+            ))}
+            {leaderboard.length === 0 && leaderboardState === 'idle' && (
+              <div className="text-sm text-gray-500">No data</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
