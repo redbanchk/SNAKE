@@ -6,6 +6,8 @@ import { MobileControls } from './MobileControls';
 import { getGlobalLeaderboard, submitScore, getCurrentUser, type GameMode } from '../services/api';
 import type { Tables } from '../supabase/types';
 import { supabase } from '../supabase/client';
+import AuthModal from './AuthModal';
+import Leaderboard from './Leaderboard';
 
 // Helper to generate random food not on snake
 const generateFood = (snake: Point[]): Point => {
@@ -46,6 +48,7 @@ export const SnakeGame: React.FC = () => {
   const [speed, setSpeed] = useState(INITIAL_SPEED);
   const [user, setUser] = useState<any>(null);
   const [leaderboard, setLeaderboard] = useState<Tables<'leaderboard_global'>[]>([]);
+  const [authOpen, setAuthOpen] = useState(false);
   const startTimeRef = useRef<number | null>(null);
 
   const RAINBOW_PALETTE = [
@@ -96,6 +99,12 @@ export const SnakeGame: React.FC = () => {
     if (saved) setHighScore(parseInt(saved, 10));
     setFood(generateFood(INITIAL_SNAKE));
     getCurrentUser().then(setUser).catch(() => setUser(null));
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   // Save High Score
@@ -113,6 +122,18 @@ export const SnakeGame: React.FC = () => {
 
   useEffect(() => {
     fetchLeaderboard();
+  }, [fetchLeaderboard]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('scores-updates')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'scores' }, () => {
+        fetchLeaderboard();
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [fetchLeaderboard]);
 
   // --- Game Loop ---
@@ -279,9 +300,8 @@ export const SnakeGame: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center w-full max-w-lg mx-auto p-4 h-full">
+    <div className="flex items-start justify-center w-full max-w-5xl mx-auto p-4 h-full gap-4">
       
-      {/* Header / Scoreboard */}
       <div className="flex w-full justify-between items-center mb-4 bg-game-board p-3 rounded-xl border border-game-grid shadow-lg">
         <div className="flex items-center gap-2">
            <div className="p-2 bg-yellow-900/30 rounded-full">
@@ -300,42 +320,27 @@ export const SnakeGame: React.FC = () => {
         <div className="flex items-center gap-2">
           {!user ? (
             <button
-              onClick={() => supabase.auth.signInWithOAuth({ provider: 'github' })}
+              onClick={() => setAuthOpen(true)}
               className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-white text-xs rounded border border-gray-700"
             >
-              Sign in
+              登录
             </button>
           ) : (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400">{user.email ?? 'Signed in'}</span>
+              <span className="text-xs text-gray-400">{user.email ?? '已登录'}</span>
               <button
                 onClick={async () => { await supabase.auth.signOut(); setUser(null); }}
                 className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-white text-xs rounded border border-gray-700"
               >
-                Sign out
+                退出
               </button>
             </div>
           )}
         </div>
       </div>
 
-      <div className="w-full mb-4 bg-game-board p-3 rounded-xl border border-game-grid shadow-lg">
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-gray-400 uppercase font-bold tracking-wider">Global Top</span>
-          <span className="text-xs text-gray-500">Top 10</span>
-        </div>
-        <ul className="mt-2 space-y-1">
-          {leaderboard.map((row, idx) => (
-            <li key={`${row.user_id}-${idx}`} className="flex justify-between text-sm text-gray-300">
-              <span>{row.username ?? (row.user_id ? row.user_id.slice(0, 6) : '-')}</span>
-              <span className="font-mono">{row.best_score ?? 0}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
 
-      {/* Game Board Container */}
-      <div className="relative group w-full aspect-square max-h-[70vh]">
+      <div className="relative group flex-1 aspect-square max-h-[70vh]">
         {/* The Grid */}
         <div 
           className="w-full h-full grid bg-game-board border-4 border-game-grid rounded-lg shadow-2xl overflow-hidden"
@@ -410,7 +415,6 @@ export const SnakeGame: React.FC = () => {
         )}
       </div>
 
-      {/* Controls Footer */}
       <div className="mt-6 w-full flex justify-between items-center gap-4">
         <div className="flex-1">
            {/* Desktop hint or empty space */}
@@ -437,6 +441,10 @@ export const SnakeGame: React.FC = () => {
             )}
          </div>
       </div>
+
+      <Leaderboard items={leaderboard} currentUserId={user?.id ?? null} />
+
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onSignedIn={() => {}} />
     </div>
   );
 };
