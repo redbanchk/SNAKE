@@ -1,17 +1,19 @@
-import { supabase } from '../supabase/client'
+import { supabase, getSupabase } from '../supabase/client'
 import type { Tables, TablesInsert } from '../supabase/types'
 
 export type GameMode = 'classic' | 'time_attack' | 'obstacles'
 
 export async function getCurrentUser() {
-  if (!supabase) throw new Error('Supabase not configured')
-  const { data, error } = await supabase.auth.getUser()
+  const client = supabase || getSupabase()
+  if (!client) throw new Error('Supabase not configured')
+  const { data, error } = await client.auth.getUser()
   if (error) throw error
   return data.user
 }
 
 export async function upsertProfile(input: { username: string; avatar_url?: string; country_code?: string }): Promise<Tables<'profiles'>[]> {
-  if (!supabase) throw new Error('Supabase not configured')
+  const client = supabase || getSupabase()
+  if (!client) throw new Error('Supabase not configured')
   const user = await getCurrentUser()
   if (!user) throw new Error('Not authenticated')
   const username = input.username.trim()
@@ -22,7 +24,7 @@ export async function upsertProfile(input: { username: string; avatar_url?: stri
     avatar_url: input.avatar_url ?? null,
     country_code: input.country_code ?? null,
   }
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('profiles')
     .upsert(payload)
     .select('id, username, avatar_url, country_code, created_at')
@@ -34,7 +36,8 @@ export async function submitScore(
   score: number,
   options?: { mode?: GameMode; duration_seconds?: number; grid_size?: number }
 ): Promise<Tables<'scores'>[]> {
-  if (!supabase) throw new Error('Supabase not configured')
+  const client = supabase || getSupabase()
+  if (!client) throw new Error('Supabase not configured')
   const user = await getCurrentUser()
   if (!user) throw new Error('Not authenticated')
   const mode = options?.mode ?? 'classic'
@@ -46,7 +49,7 @@ export async function submitScore(
     duration_seconds: options?.duration_seconds ?? null,
     grid_size: options?.grid_size ?? null,
   }
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('scores')
     .insert(payload)
     .select('id, user_id, score, mode, duration_seconds, grid_size, created_at')
@@ -55,10 +58,11 @@ export async function submitScore(
 }
 
 export async function getGlobalLeaderboard(params?: { limit?: number; offset?: number }) {
-  if (!supabase) return [] as Tables<'leaderboard_global'>[]
+  const client = supabase || getSupabase()
+  if (!client) return [] as Tables<'leaderboard_global'>[]
   const limit = params?.limit ?? 100
   const offset = params?.offset ?? 0
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('leaderboard_global')
     .select('rank, user_id, username, best_score')
     .order('best_score', { ascending: false })
@@ -68,10 +72,11 @@ export async function getGlobalLeaderboard(params?: { limit?: number; offset?: n
 }
 
 export async function getModeLeaderboard(mode: GameMode, params?: { limit?: number; offset?: number }) {
-  if (!supabase) return [] as Tables<'leaderboard'>[]
+  const client = supabase || getSupabase()
+  if (!client) return [] as Tables<'leaderboard'>[]
   const limit = params?.limit ?? 100
   const offset = params?.offset ?? 0
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('leaderboard')
     .select('user_id, username, avatar_url, country_code, mode, best_score, rank')
     .eq('mode', mode)

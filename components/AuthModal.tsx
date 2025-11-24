@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { supabase } from '../supabase/client'
+import { getSupabase } from '../supabase/client'
 import { upsertProfile } from '../services/api'
 
 type Props = {
@@ -20,23 +20,25 @@ export const AuthModal: React.FC<Props> = ({ open, onClose, onSignedIn }) => {
     setLoading(true)
     setError(null)
     try {
-      if (!supabase) throw new Error('Supabase 未配置')
+      const client = getSupabase()
+      if (!client) throw new Error('Supabase 未配置')
       if (mode === 'signup') {
-        const { error: signUpError } = await supabase.auth.signUp({ email, password })
+        const { error: signUpError } = await client.auth.signUp({ email, password })
         if (signUpError) throw signUpError
-        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+        const { error: signInError } = await client.auth.signInWithPassword({ email, password })
         if (signInError) throw signInError
         const defaultName = email.split('@')[0] || 'player'
         try {
           await upsertProfile({ username: defaultName })
         } catch {}
       } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+        const { error: signInError } = await client.auth.signInWithPassword({ email, password })
         if (signInError) throw signInError
       }
       onSignedIn?.(email)
       onClose()
     } catch (err: any) {
+      console.error('[Auth] error', err)
       setError(err?.message ?? 'Authentication failed')
     } finally {
       setLoading(false)
