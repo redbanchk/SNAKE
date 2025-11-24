@@ -1,13 +1,20 @@
 import { createClient } from '@supabase/supabase-js'
+import type { Database } from './types'
+
+declare const __SUPABASE_URL__: string | undefined
+declare const __SUPABASE_ANON_KEY__: string | undefined
+
 export function getSupabase() {
+  const defineUrl = typeof __SUPABASE_URL__ !== 'undefined' ? __SUPABASE_URL__ : undefined
+  const defineKey = typeof __SUPABASE_ANON_KEY__ !== 'undefined' ? __SUPABASE_ANON_KEY__ : undefined
   const viteUrl = (import.meta as any)?.env?.VITE_SUPABASE_URL
   const viteKey = (import.meta as any)?.env?.VITE_SUPABASE_ANON_KEY
   const nodeUrl = (typeof process !== 'undefined' ? (process as any)?.env?.VITE_SUPABASE_URL : undefined)
   const nodeKey = (typeof process !== 'undefined' ? (process as any)?.env?.VITE_SUPABASE_ANON_KEY : undefined)
   const winUrl = (typeof window !== 'undefined' ? (window as any)?.VITE_SUPABASE_URL || (window as any)?.ENV?.VITE_SUPABASE_URL : undefined)
   const winKey = (typeof window !== 'undefined' ? (window as any)?.VITE_SUPABASE_ANON_KEY || (window as any)?.ENV?.VITE_SUPABASE_ANON_KEY : undefined)
-  const url = viteUrl ?? nodeUrl ?? winUrl
-  const anon = viteKey ?? nodeKey ?? winKey
+  const url = defineUrl ?? viteUrl ?? nodeUrl ?? winUrl
+  const anon = defineKey ?? viteKey ?? nodeKey ?? winKey
   const hasUrl = !!url
   const hasKey = !!anon
   if (!hasUrl || !hasKey) {
