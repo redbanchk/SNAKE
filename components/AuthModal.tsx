@@ -20,6 +20,7 @@ export const AuthModal: React.FC<Props> = ({ open, onClose, onSignedIn }) => {
     setLoading(true)
     setError(null)
     try {
+      if (!supabase) throw new Error('Supabase 未配置')
       if (mode === 'signup') {
         const { error: signUpError } = await supabase.auth.signUp({ email, password })
         if (signUpError) throw signUpError

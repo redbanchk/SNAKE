@@ -99,12 +99,15 @@ export const SnakeGame: React.FC = () => {
     if (saved) setHighScore(parseInt(saved, 10));
     setFood(generateFood(INITIAL_SNAKE));
     getCurrentUser().then(setUser).catch(() => setUser(null));
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-    });
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
+    if (supabase) {
+      const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+        setUser(session?.user ?? null);
+      });
+      return () => {
+        authListener.subscription.unsubscribe();
+      };
+    }
+    return () => {};
   }, []);
 
   // Save High Score
@@ -116,8 +119,10 @@ export const SnakeGame: React.FC = () => {
   }, [score, highScore]);
 
   const fetchLeaderboard = useCallback(async () => {
-    const data = await getGlobalLeaderboard({ limit: 10, offset: 0 });
-    setLeaderboard(data ?? []);
+    try {
+      const data = await getGlobalLeaderboard({ limit: 10, offset: 0 });
+      setLeaderboard(data ?? []);
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -125,6 +130,7 @@ export const SnakeGame: React.FC = () => {
   }, [fetchLeaderboard]);
 
   useEffect(() => {
+    if (!supabase) return;
     const channel = supabase
       .channel('scores-updates')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'scores' }, () => {
@@ -329,7 +335,7 @@ export const SnakeGame: React.FC = () => {
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-400">{user.email ?? '已登录'}</span>
               <button
-                onClick={async () => { await supabase.auth.signOut(); setUser(null); }}
+                onClick={async () => { if (!supabase) return; await supabase.auth.signOut(); setUser(null); }}
                 className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-white text-xs rounded border border-gray-700"
               >
                 退出

@@ -4,12 +4,14 @@ import type { Tables, TablesInsert } from '../supabase/types'
 export type GameMode = 'classic' | 'time_attack' | 'obstacles'
 
 export async function getCurrentUser() {
+  if (!supabase) throw new Error('Supabase not configured')
   const { data, error } = await supabase.auth.getUser()
   if (error) throw error
   return data.user
 }
 
 export async function upsertProfile(input: { username: string; avatar_url?: string; country_code?: string }): Promise<Tables<'profiles'>[]> {
+  if (!supabase) throw new Error('Supabase not configured')
   const user = await getCurrentUser()
   if (!user) throw new Error('Not authenticated')
   const username = input.username.trim()
@@ -32,6 +34,7 @@ export async function submitScore(
   score: number,
   options?: { mode?: GameMode; duration_seconds?: number; grid_size?: number }
 ): Promise<Tables<'scores'>[]> {
+  if (!supabase) throw new Error('Supabase not configured')
   const user = await getCurrentUser()
   if (!user) throw new Error('Not authenticated')
   const mode = options?.mode ?? 'classic'
@@ -52,6 +55,7 @@ export async function submitScore(
 }
 
 export async function getGlobalLeaderboard(params?: { limit?: number; offset?: number }) {
+  if (!supabase) return [] as Tables<'leaderboard_global'>[]
   const limit = params?.limit ?? 100
   const offset = params?.offset ?? 0
   const { data, error } = await supabase
@@ -64,6 +68,7 @@ export async function getGlobalLeaderboard(params?: { limit?: number; offset?: n
 }
 
 export async function getModeLeaderboard(mode: GameMode, params?: { limit?: number; offset?: number }) {
+  if (!supabase) return [] as Tables<'leaderboard'>[]
   const limit = params?.limit ?? 100
   const offset = params?.offset ?? 0
   const { data, error } = await supabase
