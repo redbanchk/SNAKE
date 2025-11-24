@@ -307,8 +307,8 @@ export const SnakeGame: React.FC = () => {
 
   return (
     <div className="flex items-start justify-center w-full max-w-5xl mx-auto p-4 h-full gap-4">
-      
-      <div className="flex w-full justify-between items-center mb-4 bg-game-board p-3 rounded-xl border border-game-grid shadow-lg">
+      <div className="flex-1 flex flex-col items-center">
+        <div className="flex w-full justify-between items-center mb-4 bg-game-board p-3 rounded-xl border border-game-grid shadow-lg">
         <div className="flex items-center gap-2">
            <div className="p-2 bg-yellow-900/30 rounded-full">
              <Trophy className="w-5 h-5 text-yellow-500" />
@@ -343,10 +343,10 @@ export const SnakeGame: React.FC = () => {
             </div>
           )}
         </div>
-      </div>
+        </div>
 
 
-      <div className="relative group flex-1 aspect-square max-h-[70vh]">
+        <div className="relative group w-full aspect-square max-h-[70vh]">
         {/* The Grid */}
         <div 
           className="w-full h-full grid bg-game-board border-4 border-game-grid rounded-lg shadow-2xl overflow-hidden"
@@ -419,9 +419,9 @@ export const SnakeGame: React.FC = () => {
             </button>
           </div>
         )}
-      </div>
+        </div>
 
-      <div className="mt-6 w-full flex justify-between items-center gap-4">
+        <div className="mt-6 w-full flex justify-between items-center gap-4">
         <div className="flex-1">
            {/* Desktop hint or empty space */}
            <div className="hidden md:block text-sm text-gray-500">
@@ -446,6 +446,7 @@ export const SnakeGame: React.FC = () => {
               </button>
             )}
          </div>
+        </div>
       </div>
 
       <Leaderboard items={leaderboard} currentUserId={user?.id ?? null} />
